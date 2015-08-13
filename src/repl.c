@@ -31,12 +31,15 @@ typedef struct lenv lenv;
 
 /** TYPES of lval **/
 enum {  LVAL_ERR, LVAL_SYM,   LVAL_NUM,
-        LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR };
+        LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR,
+        LVAL_CMD }; // only for repl
 
+/** TYPES of function **/
 enum { FUN_BUILTIN, FUN_DEF };
 
 
 typedef lval*(*lbuiltin)(lenv*, lval*);
+typedef void(*lcmd)(lenv*);
 
 
 /****** lval struct ******/
@@ -44,6 +47,9 @@ struct lval
 {
   /** the type of lval (one of the enum 'TYPES') **/
   int type;
+
+  /** cmd for type LVAL_CMD **/
+  lcmd cmd;
 
   /** value for type LVAL_NUM **/
   long num;
@@ -78,6 +84,15 @@ struct lenv
 };
 
 
+/****** lrepl struct ******/
+typedef struct lrepl
+{
+  int cmd_count;
+  char** cmd_names;
+  lcmd* cmds;
+} lrepl;
+
+
 int is(char* a, char* b)
 {
   if (!a) { return 0; }
@@ -98,6 +113,7 @@ char* ltype_name(int type)
 {
   switch (type)
   {
+    case LVAL_CMD: return "Interpreter Command";
     case LVAL_FUN: return "Function";
     case LVAL_NUM: return "Number";
     case LVAL_ERR: return "Error";
@@ -109,12 +125,21 @@ char* ltype_name(int type)
   return "Unknown";
 }
 
+/* ====== REPL ====== */
+lrepl* lrepl_new();
+void lrepl_add_cmd(lrepl* r, char* name, lcmd func);
+void lrepl_add_cmds(lrepl* r);
+
+/* ====== REPL COMMANDS ======*/
+void cmd_exit(lenv* e);
+void cmd_help(lenv* e);
+void cmd_show_env(lenv* e);
+
 /* ====== ENV ====== */
 lenv* lenv_new(void);
 void lenv_del(lenv* e);
 lval* lenv_get(lenv* e, lval* key);
 void lenv_put(lenv* e, lval* key, lval* value);
-void lenv_print(lenv* e);
 void lenv_add_builtin(lenv* e, char* name, lbuiltin func);
 void lenv_add_builtins(lenv* e);
 lval* lval_copy(lval* v);
@@ -124,6 +149,7 @@ lval* lval_num(long n);
 lval* lval_err(char* fmt, ...);
 lval* lval_sym(char* s);
 lval* lval_fun(lbuiltin func, int funtype);
+lval* lval_cmd(lcmd func);
 lval* lval_sexpr(void);
 lval* lval_qexpr(void);
 
@@ -136,9 +162,9 @@ lval* lval_add(lval* v, lval* x);
 lval* lval_read(mpc_ast_t* t, int n);
 
 /* ====== PRINTERS ====== */
-void lval_expr_print(lenv* e, lval* v, char open, char close);
-void lval_print(lenv* e, lval* v);
-void lval_println(lenv* e, lval* v);
+void lval_expr_print(lval* v, char open, char close);
+void lval_print(lval* v);
+void lval_println(lval* v);
 
 /* ====== LIST MANAGEMENT ====== */
 lval* lval_pop(lval* v, int i);
@@ -159,8 +185,79 @@ lval* builtin_div(lenv* e, lval* a);
 lval* builtin_op(lenv* e, lval* a, char* op);
 
 /* ====== EVAL ====== */
-lval* lval_eval_sexpr(lenv* e, lval* v);
-lval* lval_eval(lenv* e, lval* v);
+lval* lval_eval_sexpr(lenv* e, lval* v, lrepl* r);
+lval* lval_eval(lenv* e, lval* v, lrepl* r);
+
+
+/****** REPL COMMANDS ******/
+void cmd_exit(lenv* e)
+{
+  exit(0);
+}
+
+void cmd_help(lenv* e)
+{
+  printf("\n"
+    "repl commands:\n"
+    "\n"
+    "  exit, quit, q  exits from repl\n"
+    "  env            prints environment\n"
+    "  help           prints this message\n"
+    "\n");
+}
+
+void cmd_show_env(lenv* e)
+{
+  puts("{");
+  for (int i = 0; i < e->count; i++) {
+    printf("  %s: ", e->syms[i]);
+    lval_println(e->vals[i]);
+  }
+  puts("}");
+}
+
+
+/****** REPL ******/
+lrepl* lrepl_new()
+{
+  lrepl* repl = malloc(sizeof(lrepl));
+  repl->cmd_count = 0;
+  repl->cmd_names = NULL;
+  repl->cmds = NULL;
+  return repl;
+}
+
+void lrepl_add_cmd(lrepl* r, char* name, lcmd func)
+{
+  /* go over all items in repl */
+  for (int i = 0; i < r->cmd_count; i++) {
+    /* if the name is found then replace it */
+    if (is(r->cmd_names[i], name)) {
+      r->cmd_names[i] = name;
+      r->cmds[i] = func;
+      return;
+    }
+  }
+
+  /* if no existing entry found, then allocate space for new entry */
+  r->cmd_count++;
+  r->cmd_names = realloc(r->cmd_names, sizeof(char*) * r->cmd_count);
+  r->cmds = realloc(r->cmds, sizeof(lcmd) * r->cmd_count);
+
+  /* and save a new entry */
+  r->cmds[r->cmd_count - 1] = func;
+  r->cmd_names[r->cmd_count - 1] = malloc(strlen(name) + 1);
+  strcpy(r->cmd_names[r->cmd_count - 1], name);
+}
+
+void lrepl_add_cmds(lrepl* r)
+{
+  lrepl_add_cmd(r, "exit", cmd_exit);
+  lrepl_add_cmd(r, "quit", cmd_exit);
+  lrepl_add_cmd(r, "q", cmd_exit);
+  lrepl_add_cmd(r, "help", cmd_help);
+  lrepl_add_cmd(r, "env", cmd_show_env);
+}
 
 
 /****** ENV ******/
@@ -219,16 +316,6 @@ void lenv_put(lenv* e, lval* k, lval* v)
   e->vals[e->count - 1] = lval_copy(v);
   e->syms[e->count - 1] = malloc(strlen(k->sym) + 1);
   strcpy(e->syms[e->count - 1], k->sym);
-}
-
-void lenv_print(lenv* e)
-{
-  puts("{");
-  for (int i = 0; i < e->count; i++) {
-    printf("  %s: ", e->syms[i]);
-    lval_println(e, e->vals[i]);
-  }
-  puts("}");
 }
 
 lval* lval_copy(lval* v)
@@ -341,6 +428,14 @@ lval* lval_fun(lbuiltin func, int funtype)
   return v;
 }
 
+lval* lval_cmd(lcmd func)
+{
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_CMD;
+  v->cmd = func;
+  return v;
+}
+
 lval* lval_sexpr(void)
 {
   lval* v = malloc(sizeof(lval));
@@ -367,6 +462,7 @@ void lval_del(lval* v)
   {
     case LVAL_NUM:
     case LVAL_FUN:
+    case LVAL_CMD:
         break;
 
     case LVAL_ERR:
@@ -391,11 +487,11 @@ void lval_del(lval* v)
 
 
 /****** PRINT ******/
-void lval_expr_print(lenv* e, lval* v, char open, char close)
+void lval_expr_print(lval* v, char open, char close)
 {
   putchar(open);
   for (int i = 0; i < v->count; i++) {
-    lval_print(e, v->cell[i]);
+    lval_print(v->cell[i]);
     if (i != (v->count - 1)) {
       putchar(' ');
     }
@@ -403,7 +499,7 @@ void lval_expr_print(lenv* e, lval* v, char open, char close)
   putchar(close);
 }
 
-void lval_print(lenv* e, lval* v)
+void lval_print(lval* v)
 {
   switch (v->type)
   {
@@ -416,18 +512,7 @@ void lval_print(lenv* e, lval* v)
       break;
 
     case LVAL_SYM:
-      if (is(v->sym, "env")) {
-        lenv_print(e);
-      } else if (is(v->sym, "help")) {
-        printf("\n"
-            "repl commands:\n"
-            "\n"
-            "  exit, quit, q  exits from repl\n"
-            "  env            prints environment\n"
-            "  help           prints this message\n");
-      } else {
-        printf("%s", v->sym);
-      }
+      printf("%s", v->sym);
       break;
 
     case LVAL_FUN:
@@ -439,19 +524,19 @@ void lval_print(lenv* e, lval* v)
       break;
 
     case LVAL_SEXPR:
-      lval_expr_print(e, v, '(', ')');
+      lval_expr_print(v, '(', ')');
       break;
 
     case LVAL_QEXPR:
-      lval_expr_print(e, v, '{', '}');
+      lval_expr_print(v, '{', '}');
       break;
 
   }
 }
 
-void lval_println(lenv* e, lval* v)
+void lval_println(lval* v)
 {
-  lval_print(e, v);
+  lval_print(v);
   putchar('\n');
 }
 
@@ -650,7 +735,7 @@ lval* builtin_eval(lenv* e, lval* a)
   /* make it an sexpr */
   v->type = LVAL_SEXPR;
   /* and evaluate it */
-  return lval_eval(e, v);
+  return lval_eval(e, v, NULL);
 }
 
 lval* builtin_join(lenv* e, lval* a)
@@ -736,11 +821,11 @@ lval* builtin_op(lenv* e, lval* a, char* op)
 
 
 /****** EVAL ******/
-lval* lval_eval_sexpr(lenv* e, lval* v)
+lval* lval_eval_sexpr(lenv* e, lval* v, lrepl* r)
 {
   /* evaluate all children of expression, if any of those is an error, return that */
   for (int i = 0; i < v->count; i++) {
-    v->cell[i] = lval_eval(e, v->cell[i]);
+    v->cell[i] = lval_eval(e, v->cell[i], r);
     if (v->cell[i]->type == LVAL_ERR) {
       return lval_take(v, i);
     }
@@ -769,22 +854,23 @@ lval* lval_eval_sexpr(lenv* e, lval* v)
   return result;
 }
 
-lval* lval_eval(lenv* e, lval* v)
+lval* lval_eval(lenv* e, lval* v, lrepl* r)
 {
   if (v->type == LVAL_SYM) {
-    /* this is the list of repl commands */
-    if (is(v->sym, "env")) { return v; }
-    if (is(v->sym, "help")) { return v; }
-    if (is(v->sym, "exit") || is(v->sym, "quit") || is(v->sym, "q")) { exit(0); }
-    else {
-      lval* x = lenv_get(e, v);
-      lval_del(v);
-      return x;
+    /* check if the symbol is a repl command */
+    for (int i = 0; i < r->cmd_count; i++) {
+      if (is(v->sym, r->cmd_names[i])) {
+        lval_del(v);
+        return lval_cmd(r->cmds[i]);
+      }
     }
+    lval* x = lenv_get(e, v);
+    lval_del(v);
+    return x;
   }
 
   if (v->type == LVAL_SEXPR) {
-    return lval_eval_sexpr(e, v);
+    return lval_eval_sexpr(e, v, r);
   }
 
   return v;
@@ -818,6 +904,9 @@ int main (int argc, char** argv)
   puts("Lisp Version " VERSION);
   puts("Press Ctrl+c to Exit\n");
 
+  lrepl* repl = lrepl_new();
+  lrepl_add_cmds(repl);
+
   lenv* e = lenv_new();
   lenv_add_builtins(e);
 
@@ -831,11 +920,13 @@ int main (int argc, char** argv)
 #if DEBUG
       mpc_ast_print(r.output);
 #endif
-      lval* x = lval_eval(e, lval_read(r.output, 0));
-      if (x) {
-        lval_println(e, x);
-        lval_del(x);
+      lval* x = lval_eval(e, lval_read(r.output, 0), repl);
+      if (x->type == LVAL_CMD) {
+        x->cmd(e);
+      } else {
+        lval_println(x);
       }
+      lval_del(x);
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
