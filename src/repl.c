@@ -857,11 +857,13 @@ lval* lval_eval_sexpr(lenv* e, lval* v, lrepl* r)
 lval* lval_eval(lenv* e, lval* v, lrepl* r)
 {
   if (v->type == LVAL_SYM) {
-    /* check if the symbol is a repl command */
-    for (int i = 0; i < r->cmd_count; i++) {
-      if (is(v->sym, r->cmd_names[i])) {
-        lval_del(v);
-        return lval_cmd(r->cmds[i]);
+    if (r) {
+      /* if we are in a repl check if the symbol is a repl command */
+      for (int i = 0; i < r->cmd_count; i++) {
+        if (is(v->sym, r->cmd_names[i])) {
+          lval_del(v);
+          return lval_cmd(r->cmds[i]);
+        }
       }
     }
     lval* x = lenv_get(e, v);
