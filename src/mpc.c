@@ -1984,7 +1984,7 @@ static mpc_val_t *mpcf_re_range(mpc_val_t *x) {
         for (j = start; j <= end; j++) {
           range = realloc(range, strlen(range) + 1 + 1);
           range[strlen(range) + 1] = '\0';
-          range[strlen(range) + 0] = j;
+          range[strlen(range) + 0] = (char)j;
         }        
       }
     }

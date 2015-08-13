@@ -219,6 +219,7 @@ void lval_print(lval* v)
     case LVAL_QEXPR:
       lval_expr_print(v, '{', '}');
       break;
+
   }
 }
 
@@ -440,6 +441,8 @@ lval* lval_eval(lval* v)
 /****** REPL ******/
 int main (int argc, char** argv)
 {
+  (void*)argc; (void*)argv;
+
   /* Create some parsers */
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Symbol = mpc_new("symbol");
@@ -475,9 +478,9 @@ int main (int argc, char** argv)
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Lispy, &r)) {
       lval* read = lval_read(r.output);
-      lval_print(read);
+//       lval_print(read);
       lval* result = lval_eval(read);
-      printf(" -> ");
+//       printf(" -> ");
       lval_println(result);
       lval_del(result);
 //       mpc_ast_print(r.output);
