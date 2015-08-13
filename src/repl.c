@@ -641,8 +641,6 @@ lval* lval_eval(lenv* e, lval* v)
 /****** REPL ******/
 int main (int argc, char** argv)
 {
-  (void*)argc; (void*)argv;
-
   /* Create some parsers */
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Symbol = mpc_new("symbol");
