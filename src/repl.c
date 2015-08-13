@@ -8,6 +8,8 @@
 #include <editline/readline.h>
 #endif
 
+#define DEBUG 0
+
 #define VERSION "0.0.1"
 
 #define ERR_MSG_BUFFER_SIZE 512
@@ -75,6 +77,22 @@ struct lenv
   lval** vals;
 };
 
+
+int is(char* a, char* b)
+{
+  if (!a) { return 0; }
+  if (!b) { return 0; }
+  return strncmp(a, b, strlen(b)) == 0;
+}
+
+int has(char* a, char* b)
+{
+  if (!a) { return 0; }
+  if (!b) { return 0; }
+  return strstr(a, b) != 0;
+}
+
+
 /* ====== DEBUG ====== */
 char* ltype_name(int type)
 {
@@ -115,7 +133,7 @@ void lval_del(lval* v);
 /* ====== READERS ====== */
 lval* lval_read_num(mpc_ast_t* t);
 lval* lval_add(lval* v, lval* x);
-lval* lval_read(mpc_ast_t* t);
+lval* lval_read(mpc_ast_t* t, int n);
 
 /* ====== PRINTERS ====== */
 void lval_expr_print(lenv* e, lval* v, char open, char close);
@@ -171,7 +189,7 @@ lval* lenv_get(lenv* e, lval* k)
   /* go over all items in environment */
   for (int i = 0; i < e->count; i++) {
     /* if the symbol is found then return a copy of it */
-    if (strcmp(e->syms[i], k->sym) == 0) {
+    if (is(e->syms[i], k->sym)) {
       return lval_copy(e->vals[i]);
     }
   }
@@ -185,7 +203,7 @@ void lenv_put(lenv* e, lval* k, lval* v)
   /* go over all items in environment */
   for (int i = 0; i < e->count; i++) {
     /* if the symbol is found then delete it and replace it with the new one */
-    if (strcmp(e->syms[i], k->sym) == 0) {
+    if (is(e->syms[i], k->sym)) {
       lval_del(e->vals[i]);
       e->vals[i] = lval_copy(v);
       return;
@@ -398,8 +416,15 @@ void lval_print(lenv* e, lval* v)
       break;
 
     case LVAL_SYM:
-      if (strstr(v->sym, "env")) {
+      if (is(v->sym, "env")) {
         lenv_print(e);
+      } else if (is(v->sym, "help")) {
+        printf("\n"
+            "repl commands:\n"
+            "\n"
+            "  exit, quit, q  exits from repl\n"
+            "  env            prints environment\n"
+            "  help           prints this message\n");
       } else {
         printf("%s", v->sym);
       }
@@ -447,23 +472,53 @@ lval* lval_add(lval* v, lval* x)
   return v;
 }
 
-lval* lval_read(mpc_ast_t* t)
+void debug_read(char* m, int n, int children_num)
 {
-  if (strstr(t->tag, "number")) { return lval_read_num(t); }
-  if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
+#if DEBUG
+  for (int i = 0; i < n; i++ ) {
+    printf("  ");
+  }
+  printf("%s (%i)\n", m, children_num);
+#endif
+}
+
+lval* lval_read(mpc_ast_t* t, int n)
+{
+  if (has(t->tag, "number")) {
+    debug_read("number", n, 0);
+    return lval_read_num(t);
+  }
+
+  if (has(t->tag, "symbol")) {
+    debug_read("symbol", n, 0);
+    return lval_sym(t->contents);
+  }
 
   lval* x = NULL;
-  if (strcmp(t->tag, ">") == 0) { x = lval_sexpr(); }
-  if (strstr(t->tag, "sexpr"))  { x = lval_sexpr(); }
-  if (strstr(t->tag, "qexpr"))  { x = lval_qexpr(); }
+
+  if (has(t->tag, ">")) {
+    debug_read("sepxr >", n, t->children_num);
+    x = lval_sexpr();
+  }
+
+  if (has(t->tag, "sexpr")) {
+    debug_read("sepxr", n, t->children_num);
+    x = lval_sexpr();
+  }
+
+  if (has(t->tag, "qexpr")) {
+    debug_read("qepxr", n, t->children_num);
+    x = lval_qexpr();
+  }
 
   for (int i = 0; i < t->children_num; i++) {
-    if (strcmp(t->children[i]->contents, "(") == 0) { continue; }
-    if (strcmp(t->children[i]->contents, ")") == 0) { continue; }
-    if (strcmp(t->children[i]->contents, "{") == 0) { continue; }
-    if (strcmp(t->children[i]->contents, "}") == 0) { continue; }
-    if (strcmp(t->children[i]->tag,  "regex") == 0) { continue; }
-    x = lval_add(x, lval_read(t->children[i]));
+    if (is(t->children[i]->contents, "(")) { continue; }
+    if (is(t->children[i]->contents, ")")) { continue; }
+    if (is(t->children[i]->contents, "{")) { continue; }
+    if (is(t->children[i]->contents, "}")) { continue; }
+    if (is(t->children[i]->tag, "regex")) { continue; }
+    debug_read(t->children[i]->tag, n + 1, 0);
+    x = lval_add(x, lval_read(t->children[i], n + 1));
   }
 
   return x;
@@ -524,7 +579,7 @@ lval* builtin_def(lenv* e, lval* a)
 
   lval_del(a);
 
-  return lval_sym("env");
+  return lval_sexpr();
 }
 
 lval* builtin_head(lenv* e, lval* a)
@@ -642,15 +697,17 @@ lval* builtin_op(lenv* e, lval* a, char* op)
 {
   for (int i = 0; i < a->count; i++) {
     if (a->cell[i]->type != LVAL_NUM) {
+      lval* err = lval_err("function '%s' passed incorrect type for argument %i. got '%s', expected '%s'",
+          op, i, ltype_name(a->cell[i]->type), ltype_name(LVAL_NUM));
       lval_del(a);
-      return lval_err("cannot operate on non-number!");
+      return err;
     }
   }
 
   /* pop the first element */
   lval* x = lval_pop(a, 0);
 
-  if ((strcmp(op, "-") == 0) && a->count == 0) {
+  if ((is(op, "-")) && a->count == 0) {
     x->num = -x->num;
   }
 
@@ -658,10 +715,10 @@ lval* builtin_op(lenv* e, lval* a, char* op)
     /* pop the next element */
     lval* y = lval_pop(a, 0);
 
-    if (strcmp(op, "+") == 0) { x->num += y->num; }
-    if (strcmp(op, "-") == 0) { x->num -= y->num; }
-    if (strcmp(op, "*") == 0) { x->num *= y->num; }
-    if (strcmp(op, "/") == 0) {
+    if (is(op, "+")) { x->num += y->num; }
+    if (is(op, "-")) { x->num -= y->num; }
+    if (is(op, "*")) { x->num *= y->num; }
+    if (is(op, "/")) {
       if (y->num == 0) {
         lval_del(x);
         x = lval_err("division by zero");
@@ -701,9 +758,10 @@ lval* lval_eval_sexpr(lenv* e, lval* v)
 
   lval* f = lval_pop(v, 0);
   if (f->type != LVAL_FUN) {
+    lval* err = lval_err("%s does not start with a function", ltype_name(v->type));
     lval_del(v);
     lval_del(f);
-    return lval_err("S-expression does not start with a function!");
+    return err;
   }
 
   lval* result = f->fun(e, v);
@@ -714,9 +772,11 @@ lval* lval_eval_sexpr(lenv* e, lval* v)
 lval* lval_eval(lenv* e, lval* v)
 {
   if (v->type == LVAL_SYM) {
-    if (strstr(v->sym, "env")) {
-      return v;
-    } else {
+    /* this is the list of repl commands */
+    if (is(v->sym, "env")) { return v; }
+    if (is(v->sym, "help")) { return v; }
+    if (is(v->sym, "exit") || is(v->sym, "quit") || is(v->sym, "q")) { exit(0); }
+    else {
       lval* x = lenv_get(e, v);
       lval_del(v);
       return x;
@@ -768,9 +828,14 @@ int main (int argc, char** argv)
 
     mpc_result_t r;
     if (mpc_parse("<stdin>", input, Lispy, &r)) {
-      lval* x = lval_eval(e, lval_read(r.output));
-      lval_println(e, x);
-      lval_del(x);
+#if DEBUG
+      mpc_ast_print(r.output);
+#endif
+      lval* x = lval_eval(e, lval_read(r.output, 0));
+      if (x) {
+        lval_println(e, x);
+        lval_del(x);
+      }
       mpc_ast_delete(r.output);
     } else {
       mpc_err_print(r.error);
