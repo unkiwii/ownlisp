@@ -145,7 +145,7 @@ char* ltype_name(int type)
 }
 
 /* ====== REPL ====== */
-lrepl* lrepl_new();
+lrepl* lrepl_new(void);
 void lrepl_add_cmd(lrepl* r, char* name, lcmd func);
 void lrepl_add_cmds(lrepl* r);
 
