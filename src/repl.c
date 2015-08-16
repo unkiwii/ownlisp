@@ -58,6 +58,7 @@ typedef struct lrepl
 /** TYPES of lval **/
 enum {  LVAL_ERR, LVAL_SYM,   LVAL_NUM,
         LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR,
+        LVAL_STR,
         LVAL_CMD }; // only for repl
 
 
@@ -81,6 +82,9 @@ struct lval
 
   /** value for type LVAL_SYM **/
   char* sym;
+
+  /** value for type LVAL_STR **/
+  char* str;
 
   /** value for type LVAL_FUN **/
   lbuiltin builtin;
@@ -136,6 +140,7 @@ char* ltype_name(int type)
     case LVAL_NUM: return "Number";
     case LVAL_ERR: return "Error";
     case LVAL_SYM: return "Symbol";
+    case LVAL_STR: return "String";
     case LVAL_SEXPR: return "S-Expression";
     case LVAL_QEXPR: return "Q-Expression";
   }
@@ -168,6 +173,7 @@ lval* lval_copy(lval* v);
 lval* lval_num(long n);
 lval* lval_err(char* fmt, ...);
 lval* lval_sym(char* s);
+lval* lval_str(char* s);
 lval* lval_fun(lbuiltin func);
 lval* lval_lambda(lval* formals, lval* body);
 lval* lval_cmd(lcmd func);
@@ -179,11 +185,13 @@ void lval_del(lval* v);
 
 /* ====== READERS ====== */
 lval* lval_read_num(mpc_ast_t* t);
+lval* lval_read_str(mpc_ast_t* t);
 lval* lval_add(lval* v, lval* x);
 lval* lval_read(mpc_ast_t* t, int n);
 
 /* ====== PRINTERS ====== */
 void lval_expr_print(lval* v, char open, char close);
+void lval_str_print(lval* v);
 void lval_print(lval* v);
 void lval_println(lval* v);
 
@@ -419,6 +427,11 @@ lval* lval_copy(lval* v)
       strcpy(x->sym, v->sym);
       break;
 
+    case LVAL_STR:
+      x->str = malloc(strlen(v->str) + 1);
+      strcpy(x->str, v->str);
+      break;
+
     case LVAL_SEXPR:
     case LVAL_QEXPR:
       x->count = v->count;
@@ -513,6 +526,15 @@ lval* lval_sym(char* s)
   return v;
 }
 
+lval* lval_str(char* s)
+{
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_STR;
+  v->str = malloc(strlen(s) + 1);
+  strcpy(v->str, s);
+  return v;
+}
+
 lval* lval_fun(lbuiltin func)
 {
   lval* v = malloc(sizeof(lval));
@@ -584,6 +606,10 @@ void lval_del(lval* v)
       free(v->sym);
       break;
 
+    case LVAL_STR:
+      free(v->str);
+      break;
+
     case LVAL_SEXPR:
     case LVAL_QEXPR:
       for (int i = 0; i < v->count; i++) {
@@ -610,6 +636,15 @@ void lval_expr_print(lval* v, char open, char close)
   putchar(close);
 }
 
+void lval_str_print(lval* v)
+{
+  char* escaped = malloc(strlen(v->str) + 1);
+  strcpy(escaped, v->str);
+  escaped = mpcf_escape(escaped);
+  printf("\"%s\"", escaped);
+  free(escaped);
+}
+
 void lval_print(lval* v)
 {
   switch (v->type)
@@ -624,6 +659,10 @@ void lval_print(lval* v)
 
     case LVAL_SYM:
       printf("%s", v->sym);
+      break;
+
+    case LVAL_STR:
+      lval_str_print(v);
       break;
 
     case LVAL_FUN:
@@ -664,6 +703,18 @@ lval* lval_read_num(mpc_ast_t* t)
   return errno != ERANGE ? lval_num(x) : lval_err("invalid number");
 }
 
+lval* lval_read_str(mpc_ast_t* t)
+{
+  char* str = t->contents;
+  str[strlen(str) - 1] = '\0';
+  char* unescaped = malloc(strlen(str + 1) + 1);
+  strcpy(unescaped, str + 1);
+  unescaped = mpcf_unescape(unescaped);
+  lval* s = lval_str(unescaped);
+  free(unescaped);
+  return s;
+}
+
 lval* lval_add(lval* v, lval* x)
 {
   v->count++;
@@ -698,6 +749,11 @@ lval* lval_read(mpc_ast_t* t, int n)
     return lval_read_num(t);
   }
 
+  if (has(t->tag, "string")) {
+    debug_read("string", n, 0);
+    return lval_read_str(t);
+  }
+
   if (has(t->tag, "symbol")) {
     debug_read1("symbol", n, 0, t->contents);
     return lval_sym(t->contents);
@@ -721,11 +777,12 @@ lval* lval_read(mpc_ast_t* t, int n)
   }
 
   for (int i = 0; i < t->children_num; i++) {
-    if (is(t->children[i]->contents, "(")) { continue; }
-    if (is(t->children[i]->contents, ")")) { continue; }
-    if (is(t->children[i]->contents, "{")) { continue; }
-    if (is(t->children[i]->contents, "}")) { continue; }
-    if (is(t->children[i]->tag, "regex")) { continue; }
+    if (is(t->children[i]->contents, "("))   { continue; }
+    if (is(t->children[i]->contents, ")"))   { continue; }
+    if (is(t->children[i]->contents, "{"))   { continue; }
+    if (is(t->children[i]->contents, "}"))   { continue; }
+    if (is(t->children[i]->tag, "regex"))    { continue; }
+    if (has(t->children[i]->tag, "comment")) { continue; }
     debug_read(t->children[i]->tag, n + 1, 0);
     x = lval_add(x, lval_read(t->children[i], n + 1));
   }
@@ -1040,6 +1097,7 @@ int lval_eq(lval* a, lval* b)
 
     case LVAL_ERR: return is(a->err, b->err);
     case LVAL_SYM: return is(a->sym, b->sym);
+    case LVAL_STR: return is(a->str, b->str);
 
     case LVAL_FUN:
       if (a->builtin || b->builtin) {
@@ -1266,6 +1324,8 @@ int main (int argc, char** argv)
 {
   /* Create some parsers */
   mpc_parser_t* Number = mpc_new("number");
+  mpc_parser_t* String = mpc_new("string");
+  mpc_parser_t* Comment = mpc_new("comment");
   mpc_parser_t* Symbol = mpc_new("symbol");
   mpc_parser_t* Sexpr = mpc_new("sexpr");
   mpc_parser_t* Qexpr = mpc_new("qexpr");
@@ -1276,13 +1336,16 @@ int main (int argc, char** argv)
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                                       \
       number    : /-?[0-9]+/ ;                              \
-      symbol    : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!:]+/ ;       \
+      symbol    : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!:]+/ ;        \
+      string    : /\"(\\\\.|[^\"])*\"/ ;                    \
+      comment   : /;[^\\r\\n]*/ ;                           \
       sexpr     : '(' <expr>* ')' ;                         \
       qexpr     : '{' <expr>* '}' ;                         \
-      expr      : <number> | <symbol> | <sexpr> | <qexpr> ; \
+      expr      : <number>  | <string> | <symbol>           \
+                | <comment> | <sexpr>  | <qexpr> ;          \
       lispy     : /^/ <expr>* /$/ ;                         \
     ",
-    Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
+    Number, String, Comment, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
   /* Start repl */
   puts("Lisp Version " VERSION);
@@ -1322,7 +1385,9 @@ int main (int argc, char** argv)
 
   lenv_del(e);
 
-  mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
+  mpc_cleanup(8,
+      Number, String, Comment, Symbol,
+      Sexpr, Qexpr, Expr, Lispy);
 
   return 0;
 }
