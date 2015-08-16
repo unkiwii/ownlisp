@@ -45,6 +45,15 @@ struct lenv;
 typedef struct lval lval;
 typedef struct lenv lenv;
 
+/****** lrepl struct ******/
+typedef void(*lcmd)(lenv*);
+typedef struct lrepl
+{
+  int cmd_count;
+  char** cmd_names;
+  lcmd* cmds;
+} lrepl;
+
 
 /** TYPES of lval **/
 enum {  LVAL_ERR, LVAL_SYM,   LVAL_NUM,
@@ -52,8 +61,7 @@ enum {  LVAL_ERR, LVAL_SYM,   LVAL_NUM,
         LVAL_CMD }; // only for repl
 
 
-typedef lval*(*lbuiltin)(lenv*, lval*);
-typedef void(*lcmd)(lenv*);
+typedef lval*(*lbuiltin)(lenv*, lval*, lrepl*);
 
 
 /****** lval struct ******/
@@ -101,15 +109,6 @@ struct lenv
   /** list of symbols (as lval*) **/
   lval** vals;
 };
-
-
-/****** lrepl struct ******/
-typedef struct lrepl
-{
-  int cmd_count;
-  char** cmd_names;
-  lcmd* cmds;
-} lrepl;
 
 
 int is(char* a, char* b)
@@ -194,38 +193,40 @@ lval* lval_take(lval* v, int i);
 lval* lval_join(lval* x, lval* y);
 
 /* ====== BUILTINS ====== */
-lval* builtin_def(lenv* e, lval* a, char* func);
-lval* builtin_global_def(lenv* e, lval* a);
-lval* builtin_local_def(lenv* e, lval* a);
+lval* builtin_def(lenv* e, lval* a, lrepl* r, char* func);
+lval* builtin_global_def(lenv* e, lval* a, lrepl* r);
+lval* builtin_local_def(lenv* e, lval* a, lrepl* r);
 
-lval* builtin_head(lenv* e, lval* a);
-lval* builtin_tail(lenv* e, lval* a);
-lval* builtin_list(lenv* e, lval* a);
-lval* builtin_eval(lenv* e, lval* a);
-lval* builtin_join(lenv* e, lval* a);
+lval* builtin_head(lenv* e, lval* a, lrepl* r);
+lval* builtin_tail(lenv* e, lval* a, lrepl* r);
+lval* builtin_list(lenv* e, lval* a, lrepl* r);
+lval* builtin_eval(lenv* e, lval* a, lrepl* r);
+lval* builtin_join(lenv* e, lval* a, lrepl* r);
 
-lval* builtin_lambda(lenv* e, lval* a);
+lval* builtin_lambda(lenv* e, lval* a, lrepl* r);
 
-lval* builtin_op(lenv* e, lval* a, char* op);
-lval* builtin_add(lenv* e, lval* a);
-lval* builtin_sub(lenv* e, lval* a);
-lval* builtin_mul(lenv* e, lval* a);
-lval* builtin_div(lenv* e, lval* a);
+lval* builtin_op(lenv* e, lval* a, lrepl* r, char* op);
+lval* builtin_add(lenv* e, lval* a, lrepl* r);
+lval* builtin_sub(lenv* e, lval* a, lrepl* r);
+lval* builtin_mul(lenv* e, lval* a, lrepl* r);
+lval* builtin_div(lenv* e, lval* a, lrepl* r);
 
-lval* builtin_ord(lenv* e, lval* a, char* op);
-lval* builtin_gt(lenv* e, lval* a);
-lval* builtin_gte(lenv* e, lval* a);
-lval* builtin_lt(lenv* e, lval* a);
-lval* builtin_lte(lenv* e, lval* a);
+lval* builtin_ord(lenv* e, lval* a, lrepl* r, char* op);
+lval* builtin_gt(lenv* e, lval* a, lrepl* r);
+lval* builtin_gte(lenv* e, lval* a, lrepl* r);
+lval* builtin_lt(lenv* e, lval* a, lrepl* r);
+lval* builtin_lte(lenv* e, lval* a, lrepl* r);
 
-lval* builtin_cmp(lenv* e, lval* a, char* op);
-lval* builtin_eq(lenv* e, lval* a);
-lval* builtin_neq(lenv* e, lval* a);
+lval* builtin_cmp(lenv* e, lval* a, lrepl* r, char* op);
+lval* builtin_eq(lenv* e, lval* a, lrepl* r);
+lval* builtin_neq(lenv* e, lval* a, lrepl* r);
+
+lval* builtin_if(lenv* e, lval* a, lrepl* r);
 
 /* ====== EVAL ====== */
 lval* lval_eval_sexpr(lenv* e, lval* v, lrepl* r);
 lval* lval_eval(lenv* e, lval* v, lrepl* r);
-lval* lval_call(lenv* e, lval* f, lval* a);
+lval* lval_call(lenv* e, lval* f, lval* a, lrepl* r);
 
 
 /****** REPL COMMANDS ******/
@@ -471,6 +472,9 @@ void lenv_add_builtins(lenv* e)
   /** def functions **/
   lenv_add_builtin(e, "def", builtin_global_def);
   lenv_add_builtin(e, "=", builtin_local_def);
+
+  /** conditionals function **/
+  lenv_add_builtin(e, "if", builtin_if);
 }
 
 
@@ -759,17 +763,7 @@ lval* lval_join(lval* x, lval* y)
 
 
 /****** BULTINS ******/
-lval* builtin_global_def(lenv* e, lval* a)
-{
-  return builtin_def(e, a, "def");
-}
-
-lval* builtin_local_def(lenv* e, lval* a)
-{
-  return builtin_def(e, a, "=");
-}
-
-lval* builtin_def(lenv* e, lval* a, char* func)
+lval* builtin_def(lenv* e, lval* a, lrepl* r, char* func)
 {
   /* the first argument must be a Q-Expression */
   LASSERT_TYPE(func, a, 0, LVAL_QEXPR);
@@ -810,7 +804,17 @@ lval* builtin_def(lenv* e, lval* a, char* func)
   return lval_sexpr();
 }
 
-lval* builtin_head(lenv* e, lval* a)
+lval* builtin_global_def(lenv* e, lval* a, lrepl* r)
+{
+  return builtin_def(e, a, r, "def");
+}
+
+lval* builtin_local_def(lenv* e, lval* a, lrepl* r)
+{
+  return builtin_def(e, a, r, "=");
+}
+
+lval* builtin_head(lenv* e, lval* a, lrepl* r)
 {
   /* must have only one argument */
   LASSERT_NUM("head", a, 1);
@@ -832,7 +836,7 @@ lval* builtin_head(lenv* e, lval* a)
   return v;
 }
 
-lval* builtin_tail(lenv* e, lval* a)
+lval* builtin_tail(lenv* e, lval* a, lrepl* r)
 {
   /* must have only one argument */
   LASSERT_NUM("tail", a, 1);
@@ -852,14 +856,14 @@ lval* builtin_tail(lenv* e, lval* a)
   return v;
 }
 
-lval* builtin_list(lenv* e, lval* a)
+lval* builtin_list(lenv* e, lval* a, lrepl* r)
 {
   /* list just transforms any expression into a qexpr */
   a->type = LVAL_QEXPR;
   return a;
 }
 
-lval* builtin_eval(lenv* e, lval* a)
+lval* builtin_eval(lenv* e, lval* a, lrepl* r)
 {
   /* must have only one argument */
   LASSERT_NUM("eval", a, 1);
@@ -875,7 +879,7 @@ lval* builtin_eval(lenv* e, lval* a)
   return lval_eval(e, v, NULL);
 }
 
-lval* builtin_join(lenv* e, lval* a)
+lval* builtin_join(lenv* e, lval* a, lrepl* r)
 {
   /* can receive any number of arguments ... */
   for (int i = 0; i < a->count; i++) {
@@ -895,7 +899,7 @@ lval* builtin_join(lenv* e, lval* a)
   return v;
 }
 
-lval* builtin_lambda(lenv* e, lval* a)
+lval* builtin_lambda(lenv* e, lval* a, lrepl* r)
 {
   /* must have 2 arguments */
   LASSERT_NUM("\\", a, 2);
@@ -919,7 +923,7 @@ lval* builtin_lambda(lenv* e, lval* a)
   return lval_lambda(formals, body);
 }
 
-lval* builtin_op(lenv* e, lval* a, char* op)
+lval* builtin_op(lenv* e, lval* a, lrepl* r, char* op)
 {
   for (int i = 0; i < a->count; i++) {
     if (a->cell[i]->type != LVAL_NUM) {
@@ -960,27 +964,27 @@ lval* builtin_op(lenv* e, lval* a, char* op)
   return x;
 }
 
-lval* builtin_add(lenv* e, lval* a)
+lval* builtin_add(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_op(e, a, "+");
+  return builtin_op(e, a, r, "+");
 }
 
-lval* builtin_sub(lenv* e, lval* a)
+lval* builtin_sub(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_op(e, a, "-");
+  return builtin_op(e, a, r, "-");
 }
 
-lval* builtin_mul(lenv* e, lval* a)
+lval* builtin_mul(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_op(e, a, "*");
+  return builtin_op(e, a, r, "*");
 }
 
-lval* builtin_div(lenv* e, lval* a)
+lval* builtin_div(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_op(e, a, "/");
+  return builtin_op(e, a, r, "/");
 }
 
-lval* builtin_ord(lenv* e, lval* a, char* op)
+lval* builtin_ord(lenv* e, lval* a, lrepl* r, char* op)
 {
   /* must have two arguments */
   LASSERT_NUM(op, a, 2);
@@ -1004,24 +1008,24 @@ lval* builtin_ord(lenv* e, lval* a, char* op)
   return lval_num(num);
 }
 
-lval* builtin_gt(lenv* e, lval* a)
+lval* builtin_gt(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_ord(e, a, ">");
+  return builtin_ord(e, a, r, ">");
 }
 
-lval* builtin_gte(lenv* e, lval* a)
+lval* builtin_gte(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_ord(e, a, ">=");
+  return builtin_ord(e, a, r, ">=");
 }
 
-lval* builtin_lt(lenv* e, lval* a)
+lval* builtin_lt(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_ord(e, a, "<");
+  return builtin_ord(e, a, r, "<");
 }
 
-lval* builtin_lte(lenv* e, lval* a)
+lval* builtin_lte(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_ord(e, a, "<=");
+  return builtin_ord(e, a, r, "<=");
 }
 
 int lval_eq(lval* a, lval* b)
@@ -1062,7 +1066,7 @@ int lval_eq(lval* a, lval* b)
   return 0;
 }
 
-lval* builtin_cmp(lenv* e, lval* a, char* op)
+lval* builtin_cmp(lenv* e, lval* a, lrepl* r, char* op)
 {
   /* must have two arguments */
   LASSERT_NUM(op, a, 2);
@@ -1088,14 +1092,40 @@ lval* builtin_cmp(lenv* e, lval* a, char* op)
   return lval_err("invalid comparison operator %s", op);
 }
 
-lval* builtin_eq(lenv* e, lval* a)
+lval* builtin_eq(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_cmp(e, a, "==");
+  return builtin_cmp(e, a, r, "==");
 }
 
-lval* builtin_neq(lenv* e, lval* a)
+lval* builtin_neq(lenv* e, lval* a, lrepl* r)
 {
-  return builtin_cmp(e, a, "!=");
+  return builtin_cmp(e, a, r, "!=");
+}
+
+lval* builtin_if(lenv* e, lval* a, lrepl* r)
+{
+  /** must have 3 arguments **/
+  LASSERT_NUM("if", a, 3);
+
+  /** those arguments must be a Number and 2 Q-Expressions **/
+  LASSERT_TYPE("if", a, 0, LVAL_NUM);
+  LASSERT_TYPE("if", a, 1, LVAL_QEXPR);
+  LASSERT_TYPE("if", a, 2, LVAL_QEXPR);
+
+  /** make both expressions evaluable **/
+  a->cell[1]->type = LVAL_SEXPR;
+  a->cell[2]->type = LVAL_SEXPR;
+
+  lval* x;
+  if (a->cell[0]->num) {
+    x = lval_eval(e, lval_pop(a, 1), r);
+  } else {
+    x = lval_eval(e, lval_pop(a, 2), r);
+  }
+
+  lval_del(a);
+
+  return x;
 }
 
 
@@ -1128,7 +1158,7 @@ lval* lval_eval_sexpr(lenv* e, lval* v, lrepl* r)
     return err;
   }
 
-  lval* result = lval_call(e, f, v);
+  lval* result = lval_call(e, f, v, r);
   lval_del(f);
   return result;
 }
@@ -1157,11 +1187,11 @@ lval* lval_eval(lenv* e, lval* v, lrepl* r)
   return v;
 }
 
-lval* lval_call(lenv* e, lval* f, lval* a)
+lval* lval_call(lenv* e, lval* f, lval* a, lrepl* r)
 {
   /* if is a builtin, call it directly */
   if (f->builtin) {
-    return f->builtin(e, a);
+    return f->builtin(e, a, r);
   }
 
   int args_given = a->count;
@@ -1187,7 +1217,7 @@ lval* lval_call(lenv* e, lval* f, lval* a)
 
       /* next formal should be bound to remaining arguments */
       lval* nsym = lval_pop(f->formals, 0);
-      lenv_put(f->env, nsym, builtin_list(e, a));
+      lenv_put(f->env, nsym, builtin_list(e, a, r));
       lval_del(sym);
       lval_del(nsym);
       break;
@@ -1223,7 +1253,7 @@ lval* lval_call(lenv* e, lval* f, lval* a)
   if (f->formals->count == 0) {
     /* if all formals have been bound evaluate the function */
     f->env->parent = e;
-    return builtin_eval(f->env, lval_add(lval_sexpr(), lval_copy(f->body)));
+    return builtin_eval(f->env, lval_add(lval_sexpr(), lval_copy(f->body)), r);
   }
 
   /* if there are more parameters to be bound, return a copy */
