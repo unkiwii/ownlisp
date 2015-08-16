@@ -116,7 +116,7 @@ int is(char* a, char* b)
 {
   if (!a) { return 0; }
   if (!b) { return 0; }
-  return strncmp(a, b, strlen(b)) == 0;
+  return strcmp(a, b) == 0;
 }
 
 int has(char* a, char* b)
@@ -194,20 +194,33 @@ lval* lval_take(lval* v, int i);
 lval* lval_join(lval* x, lval* y);
 
 /* ====== BUILTINS ====== */
+lval* builtin_def(lenv* e, lval* a, char* func);
 lval* builtin_global_def(lenv* e, lval* a);
 lval* builtin_local_def(lenv* e, lval* a);
-lval* builtin_def(lenv* e, lval* a, char* func);
+
 lval* builtin_head(lenv* e, lval* a);
 lval* builtin_tail(lenv* e, lval* a);
 lval* builtin_list(lenv* e, lval* a);
 lval* builtin_eval(lenv* e, lval* a);
 lval* builtin_join(lenv* e, lval* a);
+
 lval* builtin_lambda(lenv* e, lval* a);
+
+lval* builtin_op(lenv* e, lval* a, char* op);
 lval* builtin_add(lenv* e, lval* a);
 lval* builtin_sub(lenv* e, lval* a);
 lval* builtin_mul(lenv* e, lval* a);
 lval* builtin_div(lenv* e, lval* a);
-lval* builtin_op(lenv* e, lval* a, char* op);
+
+lval* builtin_ord(lenv* e, lval* a, char* op);
+lval* builtin_gt(lenv* e, lval* a);
+lval* builtin_gte(lenv* e, lval* a);
+lval* builtin_lt(lenv* e, lval* a);
+lval* builtin_lte(lenv* e, lval* a);
+
+lval* builtin_cmp(lenv* e, lval* a, char* op);
+lval* builtin_eq(lenv* e, lval* a);
+lval* builtin_neq(lenv* e, lval* a);
 
 /* ====== EVAL ====== */
 lval* lval_eval_sexpr(lenv* e, lval* v, lrepl* r);
@@ -243,7 +256,7 @@ void cmd_show_env(lenv* e)
 
 
 /****** REPL ******/
-lrepl* lrepl_new()
+lrepl* lrepl_new(void)
 {
   lrepl* repl = malloc(sizeof(lrepl));
   repl->cmd_count = 0;
@@ -434,6 +447,16 @@ void lenv_add_builtins(lenv* e)
   lenv_add_builtin(e, "-", builtin_sub);
   lenv_add_builtin(e, "*", builtin_mul);
   lenv_add_builtin(e, "/", builtin_div);
+
+  /** order functions **/
+  lenv_add_builtin(e, ">", builtin_gt);
+  lenv_add_builtin(e, ">=", builtin_gte);
+  lenv_add_builtin(e, "<", builtin_lt);
+  lenv_add_builtin(e, "<=", builtin_lte);
+
+  /** equality functions **/
+  lenv_add_builtin(e, "==", builtin_eq);
+  lenv_add_builtin(e, "!=", builtin_neq);
 
   /** list functions **/
   lenv_add_builtin(e, "list", builtin_list);
@@ -645,14 +668,23 @@ lval* lval_add(lval* v, lval* x)
   return v;
 }
 
-void debug_read(char* m, int n, int children_num)
+void debug_read1(char* m, int n, int children_num, char* p)
 {
 #if DEBUG
   for (int i = 0; i < n; i++ ) {
     printf("  ");
   }
-  printf("%s (%i)\n", m, children_num);
+  if (p) {
+    printf("%s %s (%i)\n", m, p, children_num);
+  } else {
+    printf("%s (%i)\n", m, children_num);
+  }
 #endif
+}
+
+void debug_read(char* m, int n, int children_num)
+{
+  debug_read1(m, n, children_num, NULL);
 }
 
 lval* lval_read(mpc_ast_t* t, int n)
@@ -663,7 +695,7 @@ lval* lval_read(mpc_ast_t* t, int n)
   }
 
   if (has(t->tag, "symbol")) {
-    debug_read("symbol", n, 0);
+    debug_read1("symbol", n, 0, t->contents);
     return lval_sym(t->contents);
   }
 
@@ -887,26 +919,6 @@ lval* builtin_lambda(lenv* e, lval* a)
   return lval_lambda(formals, body);
 }
 
-lval* builtin_add(lenv* e, lval* a)
-{
-  return builtin_op(e, a, "+");
-}
-
-lval* builtin_sub(lenv* e, lval* a)
-{
-  return builtin_op(e, a, "-");
-}
-
-lval* builtin_mul(lenv* e, lval* a)
-{
-  return builtin_op(e, a, "*");
-}
-
-lval* builtin_div(lenv* e, lval* a)
-{
-  return builtin_op(e, a, "/");
-}
-
 lval* builtin_op(lenv* e, lval* a, char* op)
 {
   for (int i = 0; i < a->count; i++) {
@@ -946,6 +958,144 @@ lval* builtin_op(lenv* e, lval* a, char* op)
 
   lval_del(a);
   return x;
+}
+
+lval* builtin_add(lenv* e, lval* a)
+{
+  return builtin_op(e, a, "+");
+}
+
+lval* builtin_sub(lenv* e, lval* a)
+{
+  return builtin_op(e, a, "-");
+}
+
+lval* builtin_mul(lenv* e, lval* a)
+{
+  return builtin_op(e, a, "*");
+}
+
+lval* builtin_div(lenv* e, lval* a)
+{
+  return builtin_op(e, a, "/");
+}
+
+lval* builtin_ord(lenv* e, lval* a, char* op)
+{
+  /* must have two arguments */
+  LASSERT_NUM(op, a, 2);
+
+  /* and those arguments must be numbers */
+  LASSERT_TYPE(op, a, 0, LVAL_NUM);
+  LASSERT_TYPE(op, a, 1, LVAL_NUM);
+
+  int num = 0;
+
+  int left = a->cell[0]->num;
+  int right = a->cell[1]->num;
+
+  lval_del(a);
+
+  if (is(op, ">=")) { num = left >= right; }
+  else if (is(op, "<=")) { num = left <= right; }
+  else if (is(op, ">")) { num = left > right; }
+  else if (is(op, "<")) { num = left < right; }
+
+  return lval_num(num);
+}
+
+lval* builtin_gt(lenv* e, lval* a)
+{
+  return builtin_ord(e, a, ">");
+}
+
+lval* builtin_gte(lenv* e, lval* a)
+{
+  return builtin_ord(e, a, ">=");
+}
+
+lval* builtin_lt(lenv* e, lval* a)
+{
+  return builtin_ord(e, a, "<");
+}
+
+lval* builtin_lte(lenv* e, lval* a)
+{
+  return builtin_ord(e, a, "<=");
+}
+
+int lval_eq(lval* a, lval* b)
+{
+  if (a->type != b->type) {
+    return 0;
+  }
+
+  switch (a->type) {
+    case LVAL_NUM: return a->num == b->num;
+    case LVAL_CMD: return a->cmd == b->cmd;
+
+    case LVAL_ERR: return is(a->err, b->err);
+    case LVAL_SYM: return is(a->sym, b->sym);
+
+    case LVAL_FUN:
+      if (a->builtin || b->builtin) {
+        return (a->builtin == b->builtin);
+      } else {
+        return lval_eq(a->formals, b->formals) && lval_eq(a->body, b->body);
+      }
+
+    case LVAL_SEXPR:
+    case LVAL_QEXPR:
+      if (a->count != b->count) {
+        return 0;
+      }
+
+      for (int i = 0; i < a->count; i++) {
+        if (!lval_eq(a->cell[i], b->cell[i])) {
+          return 0;
+        }
+      }
+
+      return 1;
+  }
+
+  return 0;
+}
+
+lval* builtin_cmp(lenv* e, lval* a, char* op)
+{
+  /* must have two arguments */
+  LASSERT_NUM(op, a, 2);
+
+  lval* left = lval_pop(a, 0);
+  lval* right = lval_pop(a, 0);
+
+  lval* result = NULL;
+
+  if (is(op, "==")) {
+    result = lval_num(lval_eq(left, right));
+  } else if (is(op, "!=")) {
+    result = lval_num(!lval_eq(left, right));
+  }
+
+  if (result) {
+    lval_del(left);
+    lval_del(right);
+    lval_del(a);
+    return result;
+  }
+
+  return lval_err("invalid comparison operator %s", op);
+}
+
+lval* builtin_eq(lenv* e, lval* a)
+{
+  return builtin_cmp(e, a, "==");
+}
+
+lval* builtin_neq(lenv* e, lval* a)
+{
+  return builtin_cmp(e, a, "!=");
 }
 
 
