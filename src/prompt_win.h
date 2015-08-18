@@ -8,15 +8,15 @@ static char _readline_in[BUFFER_SIZE];
 /* readline for windows */
 char* readline(char* prompt)
 {
-    fputs(prompt, stdout);
-    fgets(_readline_in, BUFFER_SIZE, stdin);
-    char* cpy = malloc(strlen(_readline_in) + 1);
-    strcpy(cpy, _readline_in);
-    cpy[strlen(cpy) - 1] = '\0';
-    return cpy;
+  fputs(prompt, stdout);
+  fgets(_readline_in, BUFFER_SIZE, stdin);
+  char* cpy = malloc(strlen(_readline_in) + 1);
+  strcpy(cpy, _readline_in);
+  cpy[strlen(cpy) - 1] = '\0';
+  return cpy;
 }
 
 /* Fake add_history function */
 void add_history(char* ignored) {
-    (void*)ignored;
+  (void*)ignored;
 }
