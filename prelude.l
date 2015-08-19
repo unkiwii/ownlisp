@@ -19,7 +19,7 @@
 
 ; Do many things in sequence
 (defn {do : l} {
-  if (== l nil) {
+  if (= l nil) {
     nil
   } {
     last l
@@ -50,7 +50,7 @@
 })
 
 (defn {len l} {
-  if (== l nil) {
+  if (= l nil) {
     0
   } {
     + 1 (len (tail l))
@@ -58,7 +58,7 @@
 })
 
 (defn {nth n l} {
-  if (== n 0) {
+  if (= n 0) {
     fst l
   } {
     nth (- n 1) (tail l)
@@ -70,7 +70,7 @@
 })
 
 (defn {take n l} {
-  if (== n 0) {
+  if (= n 0) {
     nil
   } {
     join (head l) (take (- n 1) (tail l))
@@ -78,7 +78,7 @@
 })
 
 (defn {drop n l} {
-  if (== n 0) {
+  if (= n 0) {
     l
   } {
     drop (- n 1) (tail l)
@@ -90,10 +90,10 @@
 })
 
 (defn {elem x l} {
-  if (== l nil) {
+  if (= l nil) {
     false
   } {
-    if (== x (fst l)) {
+    if (= x (fst l)) {
       true
     } {
       elem x (tail l)
@@ -103,7 +103,7 @@
 
 ; High-order functions
 (defn {map f l} {
-  if (== l nil) {
+  if (= l nil) {
     nil
   } {
     join (list (f (fst l))) (map f (tail l))
@@ -111,7 +111,7 @@
 })
 
 (defn {filter f l} {
-  if (== l nil) {
+  if (= l nil) {
     nil
   } {
     join (if (f (fst l)) {head l} {nil}) (filter f (tail l))
@@ -119,7 +119,7 @@
 })
 
 (defn {foldl f z l} {
-  if (== l nil) {
+  if (= l nil) {
     z
   } {
     foldl f (f z (fst l)) (tail l)
@@ -128,7 +128,7 @@
 
 ; Conditional functions
 (defn {select : cs} {
-  if (== cs nil) {
+  if (= cs nil) {
     error "No selection found"
   } {
     if (fst (fst cs)) {
@@ -143,10 +143,10 @@
 (def {otherwise} true)
 
 (defn {case x : cs} {
-  if (== cs nil) {
+  if (= cs nil) {
     error "No case found"
   } {
-    if (== x (fst (fst cs))) {
+    if (= x (fst (fst cs))) {
       snd (fst cs)
     } {
       curry case (join (list x) (tail cs))
@@ -162,10 +162,10 @@
   let {
     do
       (if (> from to)
-        { = {step} -1 }
-        { = {step} 1 })
-      (= {_for} (\ {from to} {
-        if (== from to)
+        { := {step} -1 }
+        { := {step} 1 })
+      (:= {_for} (\ {from to} {
+        if (= from to)
           { nil }
           { do
             (block from)
