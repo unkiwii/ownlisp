@@ -22,7 +22,7 @@ struct lparser
  *
  * return     a new parser for the language
  */
-lparser* lparser_new();
+lparser* lparser_new(void);
 
 /**
  * Deletes a parser created with lparser_new()
@@ -66,25 +66,25 @@ lval* lparser_read(mpc_ast_t* t);
  * Parse stream of chars from stdin and returns the
  * lval* of that read
  *
- * lparser* p     the parser to use
- * char* data     the data to parse
+ * lenv* e      the environment that contains the parser
+ * char* data   the data to parse
  *
  * return       and lval* with the result of the reading,
  *              this lval* must be evaluated and deleted
  *              later
  */
-lval* lparser_parse_stdin(lparser* p, char* data);
+lval* lparser_parse_stdin(lenv* e, char* data);
 
 /**
  * Parse stream of chars and returns the lval* of that read
  *
- * lparser* p     the parser to use
+ * lenv* e      the environment that contains the parser
  * char* data     the data to parse
  *
  * return       and lval* with the result of the reading,
  *              this lval* must be evaluated and deleted
  *              later
  */
-lval* lparser_parse(lparser* p, char* data);
+lval* lparser_parse(lenv* e, char* data);
 
 #endif//LISPY_PARSER_H

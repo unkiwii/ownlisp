@@ -2,7 +2,7 @@
 #include "val.h"
 #include "utils.h"
 
-lparser* lparser_new()
+lparser* lparser_new(void)
 {
   lparser* p = malloc(sizeof(lparser));
 
@@ -19,7 +19,7 @@ lparser* lparser_new()
   mpca_lang(MPCA_LANG_DEFAULT,
     "                                                       \
       number    : /-?[0-9]+/ ;                              \
-      symbol    : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!:]+/ ;        \
+      symbol    : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!:\?]+/ ;      \
       string    : /\"(\\\\.|[^\"])*\"/ ;                    \
       comment   : /;[^\\r\\n]*/ ;                           \
       sexpr     : '(' <expr>* ')' ;                         \
@@ -104,12 +104,20 @@ lval* lparser_read(mpc_ast_t* t)
   return x;
 }
 
-lval* lparser_parse_stdin(lparser* p, char* data)
+lval* lparser_parse_stdin(lenv* e, char* data)
 {
+  lparser* p = lenv_getparser(e);
   lval* x = NULL;
   mpc_result_t r;
   if (mpc_parse("<stdin>", data, p->Lispy, &r)) {
     x = lparser_read(r.output);
+    if (e->debug) {
+      printf("\nAST: ");
+      mpc_ast_print(r.output);
+      printf("\nEXPR: ");
+      lval_println(x);
+      printf("\nRESULT: ");
+    }
     mpc_ast_delete(r.output);
   } else {
     mpc_err_print(r.error);
@@ -118,12 +126,20 @@ lval* lparser_parse_stdin(lparser* p, char* data)
   return x;
 }
 
-lval* lparser_parse(lparser* p, char* data)
+lval* lparser_parse(lenv* e, char* data)
 {
+  lparser* p = lenv_getparser(e);
   lval* x = NULL;
   mpc_result_t r;
   if (mpc_parse_contents(data, p->Lispy, &r)) {
     x = lparser_read(r.output);
+    if (e->debug) {
+      printf("\nAST: ");
+      mpc_ast_print(r.output);
+      printf("\nEXPR: ");
+      lval_println(x);
+      printf("\nRESULT: ");
+    }
     mpc_ast_delete(r.output);
   } else {
     mpc_err_print(r.error);

@@ -1,0 +1,16 @@
+* add floating point numbers (doubles)
+* add modulo (%) operator
+* add pow (^) operator
+* change lval to become an union instead of an struct
+* as "def" add a "del" to remove a symbol from the environment
+    "del" must search the current environment and delete the first symbol
+    it finds (from env to parent env, and so on) so it can work with "def"
+    and also with "="
+* change print of builtin function to print its name
+* make all "list" functions to work on strings also
+* add file handling
+* load "prelude.l" at the start of the repl (or program)
+* add a hash table of variables
+    instead of storing them as strings and performing a linear search, make
+    a hash table to store the variables
+* add a typesystem

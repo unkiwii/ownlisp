@@ -22,72 +22,73 @@
       "got '%i', expected '%i'.",                            \
       func, args->count, num)
 
+#define LASSERT_NUM_OR(func, args, num1, num2)               \
+  LASSERT(args, args->count == num1 || args->count == num2,  \
+      "function '%s' passed incorrect number of arguments. " \
+      "got %i, expected %i or %i.",                          \
+      func, args->count, num1, num2)
+
 #define LASSERT_NOT_EMPTY(func, args, index)      \
   LASSERT(args, args->cell[index]->count != 0,    \
       "function '%s' passed {} for argument %i. " \
       func, index)
 
-void lenv_add_builtin(lenv* e, char* name, lbuiltin func)
+typedef void(*ldef)(lenv*, lval*, lval*);
+
+lval* _bt_def(lenv* e, lval* a, ldef func, char* fname)
 {
-  lval* k = lval_sym(name);
-  lval* v = lval_fun(func);
-  lenv_put(e, k, v);
-  lval_del(k);
-  lval_del(v);
-}
+  /**
+   * def has 2 forms:
+   *
+   *  def a b                   (1)
+   *
+   *  def {a b c} {d e f}       (2)
+   *
+   * in (1) only one symbol is defined
+   * in (2) more than one symbol is defined
+   */
 
-lval* builtin_def(lenv* e, lval* a, char* func)
-{
-  /* the first argument must be a Q-Expression */
-  LASSERT_TYPE(func, a, 0, LVAL_QEXPR);
-
-  lval* syms = a->cell[0];
-  for (int i = 0; i < syms->count; i++) {
-    /* every element of the first parameter of def must be a symbol to define */
-    LASSERT(a, (syms->cell[i]->type == LVAL_SYM),
-        "function '%s' cannot define non-symbol. "
-        "got '%s', expected '%s'.", func,
-        ltype_name(syms->cell[i]->type),
-        ltype_name(LVAL_SYM));
-
-  }
-
-  LASSERT(a, syms->count == a->count - 1,
-      "function '%s' cannot define incorrect number of values to symbols. "
-      "got %i, expected %i.", func, syms->count, a->count - 1);
-
-  int global = is(func, KW_GDEF);
-  int local = is(func, KW_LDEF);
-
-  if (!(global || local)) {
-    return lval_err("invalid function '%s'", func);
-  }
-
-  for (int i = 0; i < syms->count; i++) {
-    if (local) {
-      lenv_put(e, syms->cell[i], a->cell[i + 1]);
+  /* more than one symbol defined */
+  if (a->cell[0]->type == LVAL_QEXPR) {
+    lval* syms = a->cell[0];
+    for (int i = 0; i < syms->count; i++) {
+      /* every element of the first parameter of def must be a symbol to define */
+      LASSERT(a, (syms->cell[i]->type == LVAL_SYM),
+          "function '%s' cannot define non-symbol. "
+          "got '%s', expected '%s'.", fname,
+          ltype_name(syms->cell[i]->type),
+          ltype_name(LVAL_SYM));
     }
-    if (global) {
-      lenv_def(e, syms->cell[i], a->cell[i + 1]);
+
+    LASSERT(a, syms->count == a->count - 1,
+        "function '%s' cannot define incorrect number of values to symbols. "
+        "got %i, expected %i.", fname, syms->count, a->count - 1);
+
+    for (int i = 0; i < syms->count; i++) {
+      func(e, syms->cell[i], a->cell[i + 1]);
     }
+    lval_del(a);
+
+  /* one symbol defined */
+  } else if (a->cell[0]->type == LVAL_SYM) {
+    /* if the first parameter is a symbol only 2 parameters are allowed */
+    LASSERT_NUM(fname, a, 2);
+    func(e, a->cell[0], a->cell[1]);
+    lval_del(a);
+
+  /* neither one or more symbols defined is an error */
+  } else {
+    return lval_err("only symbols can be defined");
   }
 
-  lval_del(a);
 
   return lval_sexpr();
 }
 
-lval* builtin_global_def(lenv* e, lval* a)
-{
-  return builtin_def(e, a, KW_GDEF);
-}
+BUILTIN(GDEF) { return _bt_def(e, a, lenv_def, KW_GDEF); }
+BUILTIN(LDEF) { return _bt_def(e, a, lenv_put, KW_LDEF); }
 
-lval* builtin_local_def(lenv* e, lval* a)
-{
-  return builtin_def(e, a, KW_LDEF);
-}
-
-lval* builtin_head(lenv* e, lval* a)
+BUILTIN(HEAD)
 {
   /* must have only one argument */
   LASSERT_NUM(KW_HEAD, a, 1);
@@ -109,7 +110,7 @@ lval* builtin_head(lenv* e, lval* a)
   return v;
 }
 
-lval* builtin_tail(lenv* e, lval* a)
+BUILTIN(TAIL)
 {
   /* must have only one argument */
   LASSERT_NUM(KW_TAIL, a, 1);
@@ -129,14 +130,14 @@ lval* builtin_tail(lenv* e, lval* a)
   return v;
 }
 
-lval* builtin_list(lenv* e, lval* a)
+BUILTIN(LIST)
 {
   /* list just transforms any expression into a qexpr */
   a->type = LVAL_QEXPR;
   return a;
 }
 
-lval* builtin_eval(lenv* e, lval* a)
+BUILTIN(EVAL)
 {
   /* must have only one argument */
   LASSERT_NUM(KW_EVAL, a, 1);
@@ -152,7 +153,7 @@ lval* builtin_eval(lenv* e, lval* a)
   return leval(e, v);
 }
 
-lval* builtin_join(lenv* e, lval* a)
+BUILTIN(JOIN)
 {
   /* can receive any number of arguments ... */
   for (int i = 0; i < a->count; i++) {
@@ -172,7 +173,7 @@ lval* builtin_join(lenv* e, lval* a)
   return v;
 }
 
-lval* builtin_lambda(lenv* e, lval* a)
+BUILTIN(LAMBDA)
 {
   /* must have 2 arguments */
   LASSERT_NUM(KW_LAMBDA, a, 2);
@@ -196,7 +197,7 @@ lval* builtin_lambda(lenv* e, lval* a)
   return lval_lambda(formals, body);
 }
 
-lval* builtin_op(lenv* e, lval* a, char* op)
+lval* _bt_op(lenv* e, lval* a, char* op)
 {
   for (int i = 0; i < a->count; i++) {
     if (a->cell[i]->type != LVAL_NUM) {
@@ -237,27 +238,12 @@ lval* builtin_op(lenv* e, lval* a, char* op)
   return x;
 }
 
-lval* builtin_add(lenv* e, lval* a)
-{
-  return builtin_op(e, a, KW_ADD);
-}
+BUILTIN(ADD) { return _bt_op(e, a, KW_ADD); }
+BUILTIN(SUB) { return _bt_op(e, a, KW_SUB); }
+BUILTIN(MUL) { return _bt_op(e, a, KW_MUL); }
+BUILTIN(DIV) { return _bt_op(e, a, KW_DIV); }
 
-lval* builtin_sub(lenv* e, lval* a)
-{
-  return builtin_op(e, a, KW_SUB);
-}
-
-lval* builtin_mul(lenv* e, lval* a)
-{
-  return builtin_op(e, a, KW_MUL);
-}
-
-lval* builtin_div(lenv* e, lval* a)
-{
-  return builtin_op(e, a, KW_DIV);
-}
-
-lval* builtin_ord(lenv* e, lval* a, char* op)
+lval* _bt_ord(lenv* e, lval* a, char* op)
 {
   /* must have two arguments */
   LASSERT_NUM(op, a, 2);
@@ -281,27 +267,12 @@ lval* builtin_ord(lenv* e, lval* a, char* op)
   return lval_num(num);
 }
 
-lval* builtin_gt(lenv* e, lval* a)
-{
-  return builtin_ord(e, a, KW_GT);
-}
+BUILTIN(GT)  { return _bt_ord(e, a, KW_GT);  }
+BUILTIN(GTE) { return _bt_ord(e, a, KW_GTE); }
+BUILTIN(LT)  { return _bt_ord(e, a, KW_LT);  }
+BUILTIN(LTE) { return _bt_ord(e, a, KW_LTE); }
 
-lval* builtin_gte(lenv* e, lval* a)
-{
-  return builtin_ord(e, a, KW_GTE);
-}
-
-lval* builtin_lt(lenv* e, lval* a)
-{
-  return builtin_ord(e, a, KW_LT);
-}
-
-lval* builtin_lte(lenv* e, lval* a)
-{
-  return builtin_ord(e, a, KW_LTE);
-}
-
-lval* builtin_cmp(lenv* e, lval* a, char* op)
+lval* _bt_cmp(lenv* e, lval* a, char* op)
 {
   /* must have two arguments */
   LASSERT_NUM(op, a, 2);
@@ -327,36 +298,28 @@ lval* builtin_cmp(lenv* e, lval* a, char* op)
   return lval_err("invalid comparison operator %s", op);
 }
 
-lval* builtin_eq(lenv* e, lval* a)
+BUILTIN(EQ)  { return _bt_cmp(e, a, KW_EQ);  }
+BUILTIN(NEQ) { return _bt_cmp(e, a, KW_NEQ); }
+
+BUILTIN(IF)
 {
-  return builtin_cmp(e, a, KW_EQ);
-}
+  /** must have 2 or 3 arguments **/
+  LASSERT_NUM_OR(KW_IF, a, 2, 3);
 
-lval* builtin_neq(lenv* e, lval* a)
-{
-  return builtin_cmp(e, a, KW_NEQ);
-}
-
-lval* builtin_if(lenv* e, lval* a)
-{
-  // TODO: add support to receive only 2 arguments: if (bool) {do}
-
-  /** must have 3 arguments **/
-  LASSERT_NUM(KW_IF, a, 3);
-
-  /** those arguments must be a Number and 2 Q-Expressions **/
+  /** the first 2 must be are required and must be a Number and a Q-Expr **/
   LASSERT_TYPE(KW_IF, a, 0, LVAL_NUM);
   LASSERT_TYPE(KW_IF, a, 1, LVAL_QEXPR);
-  LASSERT_TYPE(KW_IF, a, 2, LVAL_QEXPR);
 
-  /** make both expressions evaluable **/
-  a->cell[1]->type = LVAL_SEXPR;
-  a->cell[2]->type = LVAL_SEXPR;
+  lval* x = lval_sexpr();
 
-  lval* x;
   if (a->cell[0]->num) {
+    /** if the first argument is true, evaluate the "true" part **/
+    a->cell[1]->type = LVAL_SEXPR;
     x = leval(e, lval_pop(a, 1));
-  } else {
+  } else if (a->count == 3) {
+    /** if the first argument is false, evaluate the "false" part **/
+    LASSERT_TYPE(KW_IF, a, 2, LVAL_QEXPR);
+    a->cell[2]->type = LVAL_SEXPR;
     x = leval(e, lval_pop(a, 2));
   }
 
@@ -365,12 +328,12 @@ lval* builtin_if(lenv* e, lval* a)
   return x;
 }
 
-lval* builtin_load(lenv* e, lval* a)
+BUILTIN(LOAD)
 {
   LASSERT_NUM(KW_LOAD, a, 1);
   LASSERT_TYPE(KW_LOAD, a, 0, LVAL_STR);
 
-  lval* r = lparser_parse(lenv_getparser(e), a->cell[0]->str);
+  lval* r = lparser_parse(e, a->cell[0]->str);
   if (r) {
     while (r->count) {
       lval* p = lval_pop(r, 0);
@@ -390,7 +353,7 @@ lval* builtin_load(lenv* e, lval* a)
   }
 }
 
-lval* builtin_print(lenv* e, lval* a)
+BUILTIN(PRINT)
 {
   for (int i = 0; i < a->count; i++) {
     if (a->cell[i]->type == LVAL_STR) {
@@ -398,16 +361,19 @@ lval* builtin_print(lenv* e, lval* a)
     } else {
       lval_print(a->cell[i]);
     }
-    putchar(' ');
   }
-
-  putchar('\n');
   lval_del(a);
-
   return lval_sexpr();
 }
 
-lval* builtin_error(lenv* e, lval* a)
+BUILTIN(PRINTLN)
+{
+  lval* v = BTNAME(PRINT)(e, a);
+  putchar('\n');
+  return v;
+}
+
+BUILTIN(ERROR)
 {
   /** must have 1 argument **/
   LASSERT_NUM(KW_ERROR, a, 1);
@@ -421,43 +387,57 @@ lval* builtin_error(lenv* e, lval* a)
   return err;
 }
 
+void lenv_add_builtin(lenv* e, char* name, lbuiltin func)
+{
+  lval* k = lval_sym(name);
+  lval* v = lval_fun(func);
+  lenv_put(e, k, v);
+  lval_del(k);
+  lval_del(v);
+}
+
+#define ADD_BTIN(N) lenv_add_builtin(e, KW_ ## N, BTNAME(N))
+
 void lenv_add_builtins(lenv* e)
 {
   /** mathematical functions **/
-  lenv_add_builtin(e, KW_ADD, builtin_add);
-  lenv_add_builtin(e, KW_SUB, builtin_sub);
-  lenv_add_builtin(e, KW_MUL, builtin_mul);
-  lenv_add_builtin(e, KW_DIV, builtin_div);
+  ADD_BTIN(ADD);
+  ADD_BTIN(SUB);
+  ADD_BTIN(MUL);
+  ADD_BTIN(DIV);
 
   /** order functions **/
-  lenv_add_builtin(e, KW_GT, builtin_gt);
-  lenv_add_builtin(e, KW_GTE, builtin_gte);
-  lenv_add_builtin(e, KW_LT, builtin_lt);
-  lenv_add_builtin(e, KW_LTE, builtin_lte);
+  ADD_BTIN(GT);
+  ADD_BTIN(GTE);
+  ADD_BTIN(LT);
+  ADD_BTIN(LTE);
 
   /** equality functions **/
-  lenv_add_builtin(e, KW_EQ, builtin_eq);
-  lenv_add_builtin(e, KW_NEQ, builtin_neq);
+  ADD_BTIN(EQ);
+  ADD_BTIN(NEQ);
 
   /** list functions **/
-  lenv_add_builtin(e, KW_LIST, builtin_list);
-  lenv_add_builtin(e, KW_HEAD, builtin_head);
-  lenv_add_builtin(e, KW_TAIL, builtin_tail);
-  lenv_add_builtin(e, KW_EVAL, builtin_eval);
-  lenv_add_builtin(e, KW_JOIN, builtin_join);
+  ADD_BTIN(LIST);
+  ADD_BTIN(HEAD);
+  ADD_BTIN(TAIL);
+  ADD_BTIN(EVAL);
+  ADD_BTIN(JOIN);
 
   /** lambda **/
-  lenv_add_builtin(e, KW_LAMBDA, builtin_lambda);
+  ADD_BTIN(LAMBDA);
 
   /** def functions **/
-  lenv_add_builtin(e, KW_GDEF, builtin_global_def);
-  lenv_add_builtin(e, KW_LDEF, builtin_local_def);
+  ADD_BTIN(GDEF);
+  ADD_BTIN(LDEF);
 
   /** conditionals function **/
-  lenv_add_builtin(e, KW_IF, builtin_if);
+  ADD_BTIN(IF);
 
   /** load function **/
-  lenv_add_builtin(e, KW_LOAD, builtin_load);
-  lenv_add_builtin(e, KW_PRINT, builtin_print);
-  lenv_add_builtin(e, KW_ERROR, builtin_error);
+  ADD_BTIN(LOAD);
+  ADD_BTIN(PRINT);
+  ADD_BTIN(PRINTLN);
+  ADD_BTIN(ERROR);
 }
+
+#undef ADD_BTIN

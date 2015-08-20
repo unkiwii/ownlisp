@@ -4,8 +4,18 @@
 
 lval* leval_sexpr(lenv* e, lval* v)
 {
+  int isdef  = (v->count > 0) && (v->cell[0]->type == LVAL_SYM)
+            && (is(v->cell[0]->sym, KW_GDEF) || is(v->cell[0]->sym, KW_LDEF));
+
   /* evaluate all children of expression, if any of those is an error, return that */
   for (int i = 0; i < v->count; i++) {
+    /**
+     * for definitions (def and :=) do not evaluate the second child if
+     * that child is just a symbol
+     */
+    if (isdef && i == 1 && v->cell[1]->type == LVAL_SYM) {
+      continue;
+    }
     v->cell[i] = leval(e, v->cell[i]);
     if (v->cell[i]->type == LVAL_ERR) {
       return lval_take(v, i);
@@ -70,8 +80,8 @@ lval* lcall(lenv* e, lval* f, lval* a)
     /* pop the next symbol from the formal parameters */
     lval* sym = lval_pop(f->formals, 0);
 
+    /* if function parameters are {x : xs} */
     if (is(sym->sym, KW_VARG)) {
-      /* function parameters are {x : xs} */
       if (f->formals->count != 1) {
         lval_del(a);
         return lval_err(
@@ -80,12 +90,13 @@ lval* lcall(lenv* e, lval* f, lval* a)
 
       /* next formal should be bound to remaining arguments */
       lval* nsym = lval_pop(f->formals, 0);
-      lenv_put(f->env, nsym, builtin_list(e, a));
+      lenv_put(f->env, nsym, BTNAME(LIST)(e, a));
       lval_del(sym);
       lval_del(nsym);
       break;
+
+    /* if function parameters are {a b c ...} */
     } else {
-      /* function parameters are {a b c ...} */
       lval* val = lval_pop(a, 0);
       lenv_put(f->env, sym, val);
       lval_del(sym);
@@ -116,7 +127,7 @@ lval* lcall(lenv* e, lval* f, lval* a)
   if (f->formals->count == 0) {
     /* if all formals have been bound evaluate the function */
     f->env->parent = e;
-    return builtin_eval(f->env, lval_add(lval_sexpr(), lval_copy(f->body)));
+    return BTNAME(EVAL)(f->env, lval_add(lval_sexpr(), lval_copy(f->body)));
   }
 
   /* if there are more parameters to be bound, return a copy */

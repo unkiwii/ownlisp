@@ -5,6 +5,7 @@
 lenv* lenv_new(void)
 {
   lenv* e = malloc(sizeof(lenv));
+  e->debug = 0;
   e->parser = lparser_new();
   e->parent = NULL;
   e->count = 0;
@@ -16,6 +17,7 @@ lenv* lenv_new(void)
 lenv* lenv_copy(lenv* e)
 {
   lenv* n = malloc(sizeof(lenv));
+  n->debug = e->debug;
   n->parser = NULL;
   n->parent = e->parent;
   n->count = e->count;

@@ -11,12 +11,12 @@
 
 #define VERSION "0.0.1"
 
-void cmd_exit()
+void cmd_exit(void)
 {
   exit(0);
 }
 
-void cmd_help()
+void cmd_help(void)
 {
   printf("\n"
     "repl commands:\n"
@@ -37,6 +37,12 @@ void cmd_env(lenv* e)
   puts("}");
 }
 
+void cmd_debug(lenv* e)
+{
+  e->debug = !e->debug;
+  printf("debug %s\n", e->debug ? "on" : "off");
+}
+
 int main(int argc, char** argv)
 {
   lenv* env = lenv_new();
@@ -46,7 +52,7 @@ int main(int argc, char** argv)
     /* read every file passed and load it */
     for (int i = 1; i < argc; i++) {
       lval* f = lval_add(lval_sexpr(), lval_str(argv[i]));
-      lval* x = builtin_load(env, f);
+      lval* x = BTNAME(LOAD)(env, f);
       if (x->type == LVAL_ERR) {
         lval_println(x);
       }
@@ -62,11 +68,12 @@ int main(int argc, char** argv)
       char* input = readline("\nlisp> ");
       add_history(input);
 
-      if      (is(input, ".exit")) { cmd_exit();          }
-      else if (is(input, ".help")) { cmd_help();          }
-      else if (is(input, ".env"))  { cmd_env(env); }
+      if      (is(input, ".exit"))  { cmd_exit();     }
+      else if (is(input, ".help"))  { cmd_help();     }
+      else if (is(input, ".env"))   { cmd_env(env);   }
+      else if (is(input, ".debug")) { cmd_debug(env); }
       else {
-        lval* r = lparser_parse_stdin(env->parser, input);
+        lval* r = lparser_parse_stdin(env, input);
         if (r) {
           lval* x = leval(env, r);
           lval_println(x);
