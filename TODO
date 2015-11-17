@@ -6,7 +6,6 @@
     "del" must search the current environment and delete the first symbol
     it finds (from env to parent env, and so on) so it can work with "def"
     and also with "="
-* change print of builtin function to print its name
 * make all "list" functions to work on strings also
 * add file handling
 * load "prelude.l" at the start of the repl (or program)
