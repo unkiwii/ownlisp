@@ -62,11 +62,13 @@ lval* lval_str(char* s)
   return v;
 }
 
-lval* lval_fun(lbuiltin func)
+lval* lval_fun(lbuiltin func, char* name)
 {
   lval* v = malloc(sizeof(lval));
   v->type = LVAL_FUN;
   v->builtin = func;
+  v->sym = malloc(strlen(name) + 1);
+  strcpy(v->sym, name);
   return v;
 }
 
@@ -109,6 +111,8 @@ lval* lval_copy(lval* v)
     case LVAL_FUN:
       if (v->builtin) {
         x->builtin = v->builtin;
+        x->sym = malloc(strlen(v->sym) + 1);
+        strcpy(x->sym, v->sym);
       } else {
         x->builtin = NULL;
         x->env = lenv_copy(v->env);
@@ -157,7 +161,9 @@ void lval_del(lval* v)
       break;
 
     case LVAL_FUN:
-      if (!v->builtin) {
+      if (v->builtin) {
+        free(v->sym);
+      } else {
         lenv_del(v->env);
         lval_del(v->formals);
         lval_del(v->body);
@@ -272,7 +278,7 @@ int lval_print(lval* v)
 
     case LVAL_FUN:
       if (v->builtin) {
-        printf("<builtin>");
+        printf("<builtin '%s'>", v->sym);
       } else {
         printf("(\\ ");
         lval_print(v->formals);

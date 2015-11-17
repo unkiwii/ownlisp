@@ -89,11 +89,12 @@ lval* lval_str(char* s);
  * Every builtin function is defined in builtins.h
  *
  * lbultin func   assigned to v->builtin
+ * char* name     name of the function
  *
  * return   an lval* of type LVAL_FUN, with v->formals
  *          and v->body set to NULL
  */
-lval* lval_fun(lbuiltin func);
+lval* lval_fun(lbuiltin func, char* name);
 
 /**
  * Creates a function
