@@ -188,11 +188,16 @@ lval* lval_pop(lval* v, int i);
 lval* lval_join(lval* x, lval* y);
 
 /**
- * Print an list (S or Q Expression) to stdout
+ * Tries to print a list (S or Q Expression) to stdout.
+ *
+ * If the list is empty it does nothing and returns 0 (false)
+ * If the list has at least one child prints the list and returns 1 (true)
  *
  * lval* v      the list to print
  * char open    the char to show at the start of the output
  * char close   the char to show at the end of the output
+ *
+ * return       1 (true) if the expression has at least one child, 0 (false) otherwise
  *
  * The result is showed as:
  *
@@ -203,7 +208,7 @@ lval* lval_join(lval* x, lval* y);
  *    list: a b c, open: (, close: )      (a b c)
  *    list: 1 2 3, open: {, close: }      {1 2 3}
  */
-void lval_print_expr(lval* v, char open, char close);
+int lval_print_expr(lval* v, char open, char close);
 
 /**
  * Print an string to stdout
@@ -234,8 +239,10 @@ void lval_print_str(lval* v, char* open, char* close);
  * for any other type of lval* it just prints its contents
  *
  * lval* v      the lval* to print
+ *
+ * return       1 (true) if the value was printed, 0 (false) otherwise
  */
-void lval_println(lval* v);
+int lval_print(lval* v);
 
 /**
  * Print an lval* of any type to stdout and add a newline
@@ -243,7 +250,7 @@ void lval_println(lval* v);
  *
  * lval* v      the lval* to print
  */
-void lval_print(lval* v);
+void lval_println(lval* v);
 
 /**
  * Test 2 lval* for equality, not equality of pointers but of values

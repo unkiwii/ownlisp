@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 
     while (1)
     {
-      char* input = readline("\nlisp> ");
+      char* input = readline("lisp> ");
       add_history(input);
 
       if      (is(input, ".exit"))  { cmd_exit();     }
