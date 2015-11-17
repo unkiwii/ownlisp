@@ -42,7 +42,7 @@ lval* _bt_def(lenv* e, lval* a, ldef func, char* fname)
    *
    *  def a b                   (1)
    *
-   *  def {a b c} {d e f}       (2)
+   *  def {a b c} d e f         (2)
    *
    * in (1) only one symbol is defined
    * in (2) more than one symbol is defined
@@ -80,7 +80,6 @@ lval* _bt_def(lenv* e, lval* a, ldef func, char* fname)
   } else {
     return lval_err("only symbols can be defined");
   }
-
 
   return lval_sexpr();
 }
