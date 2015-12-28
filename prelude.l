@@ -1,10 +1,10 @@
 ; Atoms
-(def {nil} {})
-(def {true} 1)
-(def {false} 0)
+(def nil {})
+(def true 1)
+(def false 0)
 
 ; Function definition (global)
-(def {defn} (\ {f b} {
+(def defn (\ {f b} {
   def (head f) (\ (tail f) b)
 }))
 
@@ -140,7 +140,7 @@
 })
 
 ; base case for select
-(def {otherwise} true)
+(def otherwise true)
 
 (defn {case x : cs} {
   if (= cs nil) {
